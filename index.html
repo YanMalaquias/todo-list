@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Todo List</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <main class="todo">
+        <header class="todo-header">
+            <h1>Minha Todo List</h1>
+            <span>0 tarefas</span>
+        </header>
+        <!-- CREATE -->
+        <form class="todo-form">
+            <input type="text" name="task" placeholder="Digite uma tarefa..." required>
+            <button type="submit">
+                Adicionar
+            </button>
+        </form>
+        <!-- READ -->
+        <ul class="todo-list"></ul>
+    </main>
+    <!-- EDIT MODALS -->
+    <div id="modais"></div>
+</body>
+<script type="module">
+    const API = "http://localhost:3000";
+
+    const lista = document.querySelector(".todo-list");
+    const contador = document.querySelector(".todo-header span");
+    const modais = document.querySelector("#modais");
+
+    // Evita que um texto com < ou > quebre o HTML
+    function escapeHtml(texto) {
+        const div = document.createElement("div");
+        div.textContent = texto;
+        return div.innerHTML;
+    }
+
+    function atualizarContador() {
+        const total = lista.querySelectorAll(".todo-item").length;
+        contador.textContent = `${total} ${total === 1 ? "tarefa" : "tarefas"}`;
+    }
+
+    // Monta o HTML de um item da lista
+    function itemHtml(item) {
+        return `
+            <li class="todo-item" id="${item.id}">
+                <div class="task-content">
+                    <input type="checkbox" id="task-${item.id}">
+                    <label for="task-${item.id}">${escapeHtml(item.retorno)}</label>
+                </div>
+                <div class="actions">
+                    <a href="#" class="edit">Editar</a>
+                    <button type="button" class="delete">Excluir</button>
+                </div>
+            </li>
+        `;
+    }
+
+    // ---------- READ: carrega a lista ao abrir a página ----------
+    try {
+        const fetchData = await fetch(API);
+        const { data } = await fetchData.json();
+
+        lista.innerHTML = data.map(itemHtml).join("");
+        atualizarContador();
+    } catch (erro) {
+        lista.innerHTML = "<li class='todo-item'>Não consegui conectar ao servidor. Rode <b>npm run start</b> na pasta do projeto.</li>";
+        console.error(erro);
+    }
+
+    // ---------- CREATE: adiciona uma tarefa ----------
+    const newItemForm = document.querySelector(".todo-form");
+    newItemForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const input = e.target.querySelector("input");
+        const retorno = input.value.trim();
+        if (!retorno) return;
+
+        const fetchData = await fetch(API, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ retorno })
+        });
+        const { status, id } = await fetchData.json();
+
+        if (status === "success") {
+            // Antes faltava isto: colocar o item novo na tela
+            lista.insertAdjacentHTML("beforeend", itemHtml({ id, retorno }));
+            input.value = "";
+            input.focus();
+            atualizarContador();
+        }
+    });
+
+    // ---------- EDIT e DELETE (um listener só na lista) ----------
+    lista.addEventListener("click", async (e) => {
+        const editButton = e.target.classList.contains("edit") && e.target;
+        const deleteButton = e.target.classList.contains("delete") && e.target;
+
+        const item = e.target.closest("li");
+
+        if (editButton) {
+            e.preventDefault();
+            createModal(item);
+        }
+
+        if (deleteButton) {
+            await fetch(`${API}/${item.id}`, { method: "DELETE" });
+
+            item.remove();
+            atualizarContador();
+        }
+    });
+
+    // ---------- Modal de edição ----------
+    function createModal(item) {
+        modais.innerHTML = ""; // só um modal por vez
+
+        const label = item.querySelector("label");
+
+        const modal = document.createElement("div");
+        modal.className = "modal";
+        modal.innerHTML = `
+            <div class="modal-content">
+                <h2>Editar tarefa</h2>
+                <form>
+                    <input type="text" name="edit-task">
+                    <div class="modal-actions">
+                        <a href="#" class="cancel">Cancelar</a>
+                        <button type="button" class="save">Salvar</button>
+                    </div>
+                </form>
+            </div>
+        `;
+
+        const input = modal.querySelector("input");
+        input.value = label.innerText.trim();
+
+        // Cancelar
+        modal.querySelector(".cancel").addEventListener("click", (e) => {
+            e.preventDefault();
+            modal.remove();
+        });
+
+        // Salvar (PUT)
+        modal.querySelector(".save").addEventListener("click", async () => {
+            const retorno = input.value.trim();
+            if (!retorno) return;
+
+            await fetch(`${API}/${item.id}`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ retorno })
+            });
+
+            label.textContent = retorno;
+            modal.remove();
+        });
+
+        modais.appendChild(modal);
+        input.focus();
+    }
+</script>
+
+</html>
